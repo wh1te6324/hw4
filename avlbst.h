@@ -137,7 +137,12 @@ protected:
     virtual void nodeSwap( AVLNode<Key,Value>* n1, AVLNode<Key,Value>* n2);
 
     // Add helper functions here
-
+    AVLNode<Key, Value>* getRoot() const;
+    int height(AVLNode<Key, Value>* node) const;
+    void rotateLeft(AVLNode<Key, Value>* x);
+    void rotateRight(AVLNode<Key, Value>* x);
+    void rebalance(AVLNode<Key, Value>* node);
+    int updateHeightAndBalance(AVLNode<Key, Value>* node);
 
 };
 
@@ -148,7 +153,45 @@ protected:
 template<class Key, class Value>
 void AVLTree<Key, Value>::insert (const std::pair<const Key, Value> &new_item)
 {
-    // TODO
+    if(this->root_ == NULL) {
+        AVLNode<Key,Value>* newNode =
+            new AVLNode<Key,Value>(new_item.first, new_item.second, NULL);
+        this->root_ = newNode;
+        updateHeightAndBalance(getRoot());
+        return;
+    }
+
+    Node<Key,Value>* cur = this->root_;
+    Node<Key,Value>* parent = NULL;
+
+    while(cur != NULL) {
+        parent = cur;
+        if(new_item.first < cur->getKey()) {
+            cur = cur->getLeft();
+        }
+        else if(cur->getKey() < new_item.first) {
+            cur = cur->getRight();
+        }
+        else {
+            
+            cur->setValue(new_item.second);
+            return;
+        }
+    }
+
+    AVLNode<Key,Value>* parentAVL = static_cast<AVLNode<Key,Value>*>(parent);
+    AVLNode<Key,Value>* newNode =
+        new AVLNode<Key,Value>(new_item.first, new_item.second, parentAVL);
+
+    if(new_item.first < parent->getKey()) {
+        parent->setLeft(newNode);
+    }
+    else {
+        parent->setRight(newNode);
+    }
+    rebalance(parentAVL);
+
+    updateHeightAndBalance(getRoot());
 }
 
 /*
@@ -158,7 +201,51 @@ void AVLTree<Key, Value>::insert (const std::pair<const Key, Value> &new_item)
 template<class Key, class Value>
 void AVLTree<Key, Value>:: remove(const Key& key)
 {
-    // TODO
+    Node<Key,Value>* node = this->internalFind(key);
+    if(node == NULL) return;
+
+    AVLNode<Key,Value>* z = static_cast<AVLNode<Key,Value>*>(node);
+
+    
+    if(z->getLeft() != NULL && z->getRight() != NULL) {
+        Node<Key,Value>* predNode =
+            BinarySearchTree<Key,Value>::predecessor(z);
+        AVLNode<Key,Value>* pred =
+            static_cast<AVLNode<Key,Value>*>(predNode);
+        nodeSwap(z, pred);
+    }
+
+   
+    AVLNode<Key,Value>* parent = z->getParent();
+    AVLNode<Key,Value>* child;
+    if(z->getLeft() != NULL) child = z->getLeft();
+    else                     child = z->getRight();
+
+    if(child != NULL) {
+        child->setParent(parent);
+    }
+
+    if(parent == NULL) {
+        
+        this->root_ = child;
+    }
+    else if(parent->getLeft() == z) {
+        parent->setLeft(child);
+    }
+    else {
+        parent->setRight(child);
+    }
+
+    delete z;
+
+    
+    if(parent != NULL) {
+        rebalance(parent);
+    }
+
+    if(this->root_ != NULL) {
+        updateHeightAndBalance(getRoot());
+    }
 }
 
 template<class Key, class Value>
@@ -170,5 +257,128 @@ void AVLTree<Key, Value>::nodeSwap( AVLNode<Key,Value>* n1, AVLNode<Key,Value>* 
     n2->setBalance(tempB);
 }
 
+template<class Key, class Value>
+AVLNode<Key, Value>* AVLTree<Key, Value>::getRoot() const
+{
+    return static_cast<AVLNode<Key,Value>*>(this->root_);
+}
 
+template<class Key, class Value>
+int AVLTree<Key, Value>::height(AVLNode<Key, Value>* node) const
+{
+    if(node == NULL) return 0;
+    int hl = height(node->getLeft());
+    int hr = height(node->getRight());
+    return 1 + (hl > hr ? hl : hr);
+}
+
+template<class Key, class Value>
+void AVLTree<Key, Value>::rotateLeft(AVLNode<Key, Value>* x)
+{
+    if(x == NULL) return;
+    AVLNode<Key,Value>* y = x->getRight();
+    if(y == NULL) return;
+
+    AVLNode<Key,Value>* B = y->getLeft();
+    AVLNode<Key,Value>* p = x->getParent();
+    y->setLeft(x);
+    x->setParent(y);
+    x->setRight(B);
+    if(B != NULL) B->setParent(x);
+
+    y->setParent(p);
+
+    if(p == NULL) {
+        this->root_ = y;
+    }
+    else if(p->getLeft() == x) {
+        p->setLeft(y);
+    }
+    else {
+        p->setRight(y);
+    }
+}
+
+template<class Key, class Value>
+void AVLTree<Key, Value>::rotateRight(AVLNode<Key, Value>* x)
+{
+    if(x == NULL) return;
+    AVLNode<Key,Value>* y = x->getLeft();
+    if(y == NULL) return;
+
+    AVLNode<Key,Value>* B = y->getRight();
+    AVLNode<Key,Value>* p = x->getParent();
+
+    
+    y->setRight(x);
+    x->setParent(y);
+    x->setLeft(B);
+    if(B != NULL) B->setParent(x);
+
+    y->setParent(p);
+
+    if(p == NULL) {
+        this->root_ = y;
+    }
+    else if(p->getLeft() == x) {
+        p->setLeft(y);
+    }
+    else {
+        p->setRight(y);
+    }
+}
+template<class Key, class Value>
+void AVLTree<Key, Value>::rebalance(AVLNode<Key, Value>* node)
+{
+    while(node != NULL) {
+        int hl = height(node->getLeft());
+        int hr = height(node->getRight());
+        int bf = hl - hr;  
+
+        if(bf > 1) { 
+            AVLNode<Key,Value>* left = node->getLeft();
+            int hll = height(left->getLeft());
+            int hlr = height(left->getRight());
+
+            if(hll >= hlr) {
+                
+                rotateRight(node);
+            }
+            else {
+                
+                rotateLeft(left);
+                rotateRight(node);
+            }
+        }
+        else if(bf < -1) { 
+            AVLNode<Key,Value>* right = node->getRight();
+            int hrl = height(right->getLeft());
+            int hrr = height(right->getRight());
+
+            if(hrr >= hrl) {
+                
+                rotateLeft(node);
+            }
+            else {
+                
+                rotateRight(right);
+                rotateLeft(node);
+            }
+        }
+
+        node = node->getParent();
+    }
+}
+template<class Key, class Value>
+int AVLTree<Key, Value>::updateHeightAndBalance(AVLNode<Key, Value>* node)
+{
+    if(node == NULL) return 0;
+
+    int hl = updateHeightAndBalance(node->getLeft());
+    int hr = updateHeightAndBalance(node->getRight());
+    int bf = hl - hr;
+    node->setBalance(static_cast<int8_t>(bf));
+
+    return 1 + (hl > hr ? hl : hr);
+}
 #endif
